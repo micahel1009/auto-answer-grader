@@ -136,7 +136,7 @@ body {
 .cloud-icon { font-size: 40px; margin-bottom: 12px; }
 .upload-text { font-size: 14px; font-weight: 600; color: var(--text-muted); }
 
-/* 🌟 Canvas 防爆醜：高度死鎖並自動置中收縮 */
+/* 🌟 Canvas 智慧鎖定高度防止排版拉爆 */
 canvas {
     max-width: 100%;
     max-height: 480px; 
@@ -180,7 +180,7 @@ canvas {
     font-weight: 600;
 }
 
-/* 🛠️ 工業級微調調校卡片 */
+/* 工業級微調調校卡片 */
 .calibration-box {
     background: #f8fafc;
     border: 1px solid var(--border-color);
@@ -199,7 +199,7 @@ input[type="range"] {
     cursor: pointer;
 }
 
-/* 🧑‍🎓 大數據計分儀表板 */
+/* 大數據計分儀表板 */
 .result-dashboard { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .metric-item { padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); }
