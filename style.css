@@ -28,30 +28,6 @@ body {
     overflow-x: hidden;
 }
 
-/* 智慧載入遮罩動畫 */
-#opencv-loading-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(255, 255, 255, 0.95);
-    z-index: 9999;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
-}
-.spinner {
-    width: 48px;
-    height: 48px;
-    border: 4px solid var(--border-color);
-    border-top-color: var(--primary);
-    border-radius: 50%;
-    animation: spin 1s linear infinite;
-    margin-bottom: 20px;
-}
-@keyframes spin { to { transform: rotate(360deg); } }
-.loading-title { font-size: 20px; font-weight: 700; color: var(--text-main); }
-.loading-sub { font-size: 14px; color: var(--text-muted); margin-top: 8px; text-align: center; padding: 0 20px; }
-
 /* 頂部導航列 */
 .app-wrapper {
     display: flex;
@@ -100,7 +76,7 @@ body {
 }
 .panel-header h2 { font-size: 16px; font-weight: 700; }
 
-/* 工作區尺寸與防溢出鎖定 */
+/* 工作區尺寸鎖定 */
 .workspace {
     padding: 20px;
     display: flex;
@@ -108,7 +84,7 @@ body {
     gap: 16px;
 }
 
-/* 精緻拖曳上傳框 */
+/* 拖曳上傳框 */
 .upload-container {
     width: 100%;
     background: #f8fafc;
@@ -136,12 +112,14 @@ body {
 .cloud-icon { font-size: 40px; margin-bottom: 12px; }
 .upload-text { font-size: 14px; font-weight: 600; color: var(--text-muted); }
 
-/* 🌟 Canvas 智慧鎖定高度防止排版拉爆 */
+/* Canvas 智慧約束尺寸防爆框 */
 canvas {
     max-width: 100%;
-    max-height: 480px; 
+    max-height: 520px; 
     object-fit: contain;
     background: #ffffff;
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
 }
 
 /* 狀態徽章標籤 */
@@ -149,7 +127,7 @@ canvas {
 .badge-warning { background: #fef3c7; color: #d97706; }
 .badge-success { background: #d1fae5; color: #059669; }
 
-/* 按鈕語法系統 */
+/* 按鈕系統 */
 .btn {
     padding: 10px 20px;
     border-radius: var(--radius-md);
@@ -168,7 +146,7 @@ canvas {
 .btn-danger { background: #fef2f2; color: var(--danger); border: 1px solid #fee2e2; }
 .btn-danger:hover { background: var(--danger); color: white; }
 
-/* 配分設定欄 */
+/* 表單配分設定 */
 .form-row { display: flex; gap: 12px; }
 .form-group { flex: 1; display: flex; flex-direction: column; gap: 6px; }
 .form-group label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
@@ -180,7 +158,7 @@ canvas {
     font-weight: 600;
 }
 
-/* 工業級微調調校卡片 */
+/* 微調調校控制盒 */
 .calibration-box {
     background: #f8fafc;
     border: 1px solid var(--border-color);
@@ -199,7 +177,7 @@ input[type="range"] {
     cursor: pointer;
 }
 
-/* 大數據計分儀表板 */
+/* 閱卷計分儀表板 */
 .result-dashboard { display: flex; flex-direction: column; gap: 16px; width: 100%; }
 .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .metric-item { padding: 16px; border-radius: var(--radius-md); border: 1px solid var(--border-color); }
@@ -209,7 +187,7 @@ input[type="range"] {
 .metric-value { font-size: 28px; font-weight: 800; }
 .metric-value .unit { font-size: 14px; font-weight: 500; margin-left: 2px; }
 
-/* 錯題滾動列表區塊 */
+/* 錯題滾動列表 */
 .wrong-details-container h3 { font-size: 13px; font-weight: 700; margin-bottom: 8px; }
 .wrong-details-container {
     background: #fafafa;
