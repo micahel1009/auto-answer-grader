@@ -13,10 +13,10 @@
     <div class="app-wrapper">
         <header class="app-header">
             <div class="brand">
-                <span class="logo-icon">📝</span>
+                <span class="logo-icon">🚀</span>
                 <div>
                     <h1>自動答案卡批改系統</h1>
-                    <p class="subtitle">純前端 Canvas 高速像素偵測引擎 (完美相容 GitHub Pages・0延遲免排隊)</p>
+                    <p class="subtitle">智慧直方圖邊界自動偵測引擎 (上傳自動對齊・完美部署 GitHub Pages)</p>
                 </div>
             </div>
             <button id="btn-full-reset" class="btn btn-danger">✕ 完全重設系統</button>
@@ -33,7 +33,7 @@
                         <input type="file" id="upload-student" accept="image/*" capture="environment">
                         <label for="upload-student" class="drop-wrapper">
                             <span class="cloud-icon">📸</span>
-                            <span class="upload-text">點擊或拍照上傳學生卡</span>
+                            <span class="upload-text">點擊或拍照上傳學生卡 (自動對齊)</span>
                         </label>
                         <canvas id="canvas-student" class="hidden"></canvas>
                     </div>
@@ -71,7 +71,7 @@
                         <input type="file" id="upload-answer" accept="image/*" capture="environment">
                         <label for="upload-answer" class="drop-wrapper-ans">
                             <span class="cloud-icon">🎯</span>
-                            <span class="upload-text">點擊或拍照上傳正確答案卡</span>
+                            <span class="upload-text">點擊或拍照上傳正確答案卡 (自動對齊)</span>
                         </label>
                         <canvas id="canvas-answer" class="hidden"></canvas>
                     </div>
@@ -89,62 +89,44 @@
                         </div>
 
                         <div class="calibration-box">
-                            <h3>🛠️ 智慧等比例網格校準工具 (看著上圖調至完美對齊)</h3>
+                            <h3>🛠️ 智慧防線微調工具 (系統已自動偵測，僅供極端拍照補償使用)</h3>
                             
-                            <div class="slider-group">
-                                <div class="slider-header">
-                                    <span>網格左邊界起點 (X)</span>
-                                    <span class="slider-val"><span id="val-left">50</span>px</span>
+                            <div class="slider-grid-2col">
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格左邊界 (X)</span><span class="slider-val" id="val-left">50</span></div>
+                                    <input type="range" id="cali-left" min="0" max="300" value="50">
                                 </div>
-                                <input type="range" id="cali-left" min="0" max="400" value="50">
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格寬度 (W)</span><span class="slider-val" id="val-width">600</span></div>
+                                    <input type="range" id="cali-width" min="400" max="800" value="600">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格頂邊界 (Y)</span><span class="slider-val" id="val-top">190</span></div>
+                                    <input type="range" id="cali-top" min="50" max="400" value="190">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格高度 (H)</span><span class="slider-val" id="val-height">830</span></div>
+                                    <input type="range" id="cali-height" min="500" max="1000" value="830">
+                                </div>
                             </div>
 
-                            <div class="slider-group">
+                            <div class="slider-group" style="margin-top: 10px;">
                                 <div class="slider-header">
-                                    <span>網格總包絡寬度 (W) - 調整集體大欄距</span>
-                                    <span class="slider-val"><span id="val-width">600</span>px</span>
-                                </div>
-                                <input type="range" id="cali-width" min="300" max="800" value="600">
-                            </div>
-
-                            <div class="slider-group">
-                                <div class="slider-header">
-                                    <span>網格頂邊界起點 (Y)</span>
-                                    <span class="slider-val"><span id="val-top">190</span>px</span>
-                                </div>
-                                <input type="range" id="cali-top" min="0" max="500" value="190">
-                            </div>
-
-                            <div class="slider-group">
-                                <div class="slider-header">
-                                    <span>網格總包絡高度 (H) - 調整集體排高</span>
-                                    <span class="slider-val"><span id="val-height">830</span>px</span>
-                                </div>
-                                <input type="range" id="cali-height" min="400" max="1000" value="830">
-                            </div>
-
-                            <div class="slider-group">
-                                <div class="slider-header">
-                                    <span>斜角歪斜修正 (Skew) - 專治拍照拿歪</span>
+                                    <span>考卷斜角變形修正 (Skew)</span>
                                     <span class="slider-val"><span id="val-skew">0</span>px</span>
                                 </div>
                                 <input type="range" id="cali-skew" min="-50" max="50" value="0">
                             </div>
 
-                            <div class="slider-group">
-                                <div class="slider-header">
-                                    <span>選項間距 (ABCD 內跨距)</span>
-                                    <span class="slider-val"><span id="val-opt-gap">36</span>px</span>
+                            <div class="form-row" style="margin-top: 10px;">
+                                <div class="form-group">
+                                    <label>選項內跨距</label>
+                                    <input type="number" id="cali-opt-gap" value="35.5" step="0.1">
                                 </div>
-                                <input type="range" id="cali-opt-gap" min="20" max="60" step="0.5" value="36">
-                            </div>
-
-                            <div class="slider-group">
-                                <div class="slider-header">
-                                    <span>劃記黑點感應靈敏度 (感應黑點數門檻)</span>
-                                    <span class="slider-val"><span id="val-threshold">50</span>點</span>
+                                <div class="form-group">
+                                    <label>靈敏度閥值</label>
+                                    <input type="number" id="cali-threshold" value="45" min="5">
                                 </div>
-                                <input type="range" id="cali-threshold" min="5" max="200" value="50">
                             </div>
                         </div>
                     </div>
