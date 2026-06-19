@@ -1,29 +1,36 @@
-// 全域基礎網格參數定義
+// 全域狀態管理
 let baseAnswerKey = []; 
 let isBaseAnswerReady = false;
 
+// 物理幾何常數 (對標 800x1100 標準映射解析度)
 const TARGET_WIDTH = 800;
 const TARGET_HEIGHT = 1100;
 
-// 瀚浩教育答案卡標準物理幾何常數
 const GRID = {
-    colStarts: [35, 223, 411, 599], // 四大縱列基準起點
-    qNumberWidth: 32,              // 題號字元寬度
-    roiSize: 18                    // 觀測感應方塊大小 (18x18 像素)
+    colStarts: [35, 223, 411, 599], // 四大縱列 X 理論起點
+    qNumberWidth: 32,              // 題號字元佔寬
+    roiSize: 18                    // 感應方塊大小 (18x18 像素)
 };
 
-// 動態校準控制變數
+// 微調控制項動態變數
 let caliX = 0;
 let caliY = 0;
 let caliOptGap = 38;
 let caliRowHeight = 34.6;
-let caliThreshold = 80;
+let caliThreshold = 60; // 判定為劃記的「黑點像素總量門檻」
 
-const GRID_START_Y_BASE = 195; // 縱列第1題垂直高度理論起點
+const GRID_START_Y_BASE = 195; // 縱列第 1 題垂直 Y 起點
 
-// 影像高速快取矩陣 (防拉動滑桿時重複編譯，節省大量運算，防止記憶體外洩)
-let cachedAnswerWarped = null;
-let cachedStudentWarped = null;
+// 🗄️ 隱藏的離線乾淨畫布快取 (專門用來讀取純淨像素，防止畫線干擾)
+let offscreenAnswerCanvas = document.createElement('canvas');
+let offscreenStudentCanvas = document.createElement('canvas');
+offscreenAnswerCanvas.width = TARGET_WIDTH;
+offscreenAnswerCanvas.height = TARGET_HEIGHT;
+offscreenStudentCanvas.width = TARGET_WIDTH;
+offscreenStudentCanvas.height = TARGET_HEIGHT;
+
+let cachedAnswerImg = null;
+let cachedStudentImg = null;
 
 // DOM 元素繫結
 const uploadAnswer = document.getElementById('upload-answer');
@@ -32,22 +39,8 @@ const btnNextStudent = document.getElementById('btn-next-student');
 const btnFullReset = document.getElementById('btn-full-reset');
 const resultPanel = document.getElementById('result-panel');
 const ansStatus = document.getElementById('ans-status');
-const loadingOverlay = document.getElementById('opencv-loading-overlay');
 
-// 核心修復：由全域對接 window.Module 的執行緒就緒訊號
-window.initMyOMRSystem = function() {
-    console.log("OpenCV.js 智慧校準核心全面解鎖！");
-    if (loadingOverlay) {
-        loadingOverlay.style.display = 'none'; 
-    }
-};
-
-// 🔥 雙重保險核心修復：阻斷 GitHub Pages 因為異步加載造成的 Race Condition 競態鎖死 bug
-if (window.openCvReady || (typeof cv !== 'undefined' && cv.Mat)) {
-    window.initMyOMRSystem();
-}
-
-// 綁定所有校準滑桿
+// 綁定校準滑桿事件
 const sliders = ['cali-x', 'cali-y', 'cali-opt-gap', 'cali-row-height', 'cali-threshold'];
 sliders.forEach(id => {
     document.getElementById(id).addEventListener('input', updateCalibrationAndRerender);
@@ -55,7 +48,7 @@ sliders.forEach(id => {
 document.getElementById('input-total-questions').addEventListener('input', updateCalibrationAndRerender);
 
 /**
- * 核心即時連動引擎：免重新上傳，拉動任何滑桿瞬間更新畫布網格與閱卷分數
+ * 🚀 Canvas 核心引擎：拉動滑桿免重新上傳，瞬間抹除、重新繪製並結算成績
  */
 function updateCalibrationAndRerender() {
     caliX = parseInt(document.getElementById('cali-x').value);
@@ -72,17 +65,19 @@ function updateCalibrationAndRerender() {
     
     const totalQs = parseInt(document.getElementById('input-total-questions').value) || 20;
     
-    // 重新校準標準答案卡
-    if (cachedAnswerWarped) {
-        baseAnswerKey = scanPaperAnswers(cachedAnswerWarped, totalQs, document.getElementById('canvas-answer'), true);
+    // 1. 校準並重新辨識標準答案
+    if (cachedAnswerImg) {
+        const canvas = document.getElementById('canvas-answer');
+        baseAnswerKey = scanPaperAnswersCanvas(cachedAnswerImg, offscreenAnswerCanvas, canvas, totalQs, true);
         isBaseAnswerReady = true;
         ansStatus.innerText = `✅ 已就緒 (${baseAnswerKey.filter(x => x !== null).length} 題)`;
         ansStatus.className = "badge badge-success";
     }
     
-    // 重新校準並批改學生卡
-    if (cachedStudentWarped && isBaseAnswerReady) {
-        const studentAnswers = scanPaperAnswers(cachedStudentWarped, totalQs, document.getElementById('canvas-student'), false);
+    // 2. 同步校準並重新閱卷學生卡
+    if (cachedStudentImg && isBaseAnswerReady) {
+        const canvas = document.getElementById('canvas-student');
+        const studentAnswers = scanPaperAnswersCanvas(cachedStudentImg, offscreenStudentCanvas, canvas, totalQs, false);
         gradeStudentCard(studentAnswers, totalQs);
     }
 }
@@ -94,16 +89,19 @@ uploadAnswer.addEventListener('change', (e) => {
     
     const img = new Image();
     img.onload = function() {
+        cachedAnswerImg = img;
+        
+        // 隱藏虛線大方框，亮出 Canvas
+        document.querySelector('.drop-wrapper-ans').classList.add('hidden');
         const canvas = document.getElementById('canvas-answer');
-        const label = document.querySelector('.drop-wrapper-ans');
-        const src = cv.imread(img);
+        canvas.classList.remove('hidden');
+        canvas.width = TARGET_WIDTH;
+        canvas.height = TARGET_HEIGHT;
         
-        if (cachedAnswerWarped) cachedAnswerWarped.delete();
-        cachedAnswerWarped = processAndWarpCardRobust(src);
-        src.delete();
-        
-        label.classList.add('hidden'); // 隱藏上傳虛線大框
-        canvas.classList.remove('hidden'); // 開啟影像畫布
+        // 將乾淨圖像快取至離線畫布
+        const offCtx = offscreenAnswerCanvas.getContext('2d');
+        offCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+        offCtx.drawImage(img, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
         
         updateCalibrationAndRerender();
     };
@@ -113,7 +111,7 @@ uploadAnswer.addEventListener('change', (e) => {
 // 處理學生答案卡上傳
 uploadStudent.addEventListener('change', (e) => {
     if (!isBaseAnswerReady) {
-        alert('請先在右側上傳並設定「正確答案卡」基準！');
+        alert('請先在右側設定「正確答案卡」基準！');
         uploadStudent.value = '';
         return;
     }
@@ -123,16 +121,17 @@ uploadStudent.addEventListener('change', (e) => {
 
     const img = new Image();
     img.onload = function() {
+        cachedStudentImg = img;
+        
+        document.querySelector('.drop-wrapper').classList.add('hidden');
         const canvas = document.getElementById('canvas-student');
-        const label = document.querySelector('.drop-wrapper');
-        const src = cv.imread(img);
-        
-        if (cachedStudentWarped) cachedStudentWarped.delete();
-        cachedStudentWarped = processAndWarpCardRobust(src);
-        src.delete();
-        
-        label.classList.add('hidden');
         canvas.classList.remove('hidden');
+        canvas.width = TARGET_WIDTH;
+        canvas.height = TARGET_HEIGHT;
+        
+        const offCtx = offscreenStudentCanvas.getContext('2d');
+        offCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+        offCtx.drawImage(img, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
         
         updateCalibrationAndRerender();
     };
@@ -140,125 +139,91 @@ uploadStudent.addEventListener('change', (e) => {
 });
 
 /**
- * 電腦視覺極端點去背拉正演算法 (Extreme Points Wrap Perspective)
+ * 🔍 智慧像素掃描核心 (100% 純原生 Canvas 技術)
  */
-function processAndWarpCardRobust(src) {
-    let gray = new cv.Mat();
-    let blurred = new cv.Mat();
-    let thresh = new cv.Mat();
-    let contours = new cv.MatVector();
-    let hierarchy = new cv.Mat();
+function scanPaperAnswersCanvas(imgEl, offscreenCanvas, onscreenCanvas, totalQs, isBaseConfig = false) {
+    const onscreenCtx = onscreenCanvas.getContext('2d');
+    const offscreenCtx = offscreenCanvas.getContext('2d');
     
-    cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-    cv.GaussianBlur(gray, blurred, new cv.Size(7, 7), 0);
-    cv.adaptiveThreshold(blurred, thresh, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 51, 11);
-    cv.findContours(thresh, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
-    
-    let maxArea = 0;
-    let maxContourIdx = -1;
-    for (let i = 0; i < contours.size(); ++i) {
-        let cnt = contours.get(i);
-        let area = cv.contourArea(cnt);
-        if (area > maxArea) { maxArea = area; maxContourIdx = i; }
-    }
-    
-    let dst = new cv.Mat();
-    let dsize = new cv.Size(TARGET_WIDTH, TARGET_HEIGHT);
-    
-    if (maxContourIdx !== -1) {
-        let largestContour = contours.get(maxContourIdx);
-        let minSum = 999999, maxSum = -999999, minDiff = 999999, maxDiff = -999999;
-        let tl, tr, br, bl;
-        
-        for (let j = 0; j < largestContour.rows; j++) {
-            let x = largestContour.data32S[j * 2];
-            let y = largestContour.data32S[j * 2 + 1];
-            if (x + y < minSum) { minSum = x + y; tl = {x, y}; }
-            if (x + y > maxSum) { maxSum = x + y; br = {x, y}; }
-            if (y - x < minDiff) { minDiff = y - x; tr = {x, y}; }
-            if (y - x > maxDiff) { maxDiff = y - x; bl = {x, y}; }
-        }
-        
-        let srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [tl.x, tl.y, tr.x, tr.y, br.x, br.y, bl.x, bl.y]);
-        let dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, TARGET_WIDTH, 0, TARGET_WIDTH, TARGET_HEIGHT, 0, TARGET_HEIGHT]);
-        let M = cv.getPerspectiveTransform(srcTri, dstTri);
-        cv.warpPerspective(src, dst, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
-        
-        srcTri.delete(); dstTri.delete(); M.delete();
-    } else {
-        cv.resize(src, dst, dsize, 0, 0, cv.INTER_LINEAR);
-    }
-    
-    gray.delete(); blurred.delete(); thresh.delete(); contours.delete(); hierarchy.delete();
-    return dst;
-}
-
-/**
- * 網格氣泡動態掃描 + HTML5 Canvas 即時高亮繪製
- */
-function scanPaperAnswers(warpedMat, totalQs, canvas, isBaseConfig = false) {
-    if (!warpedMat) return [];
-    cv.imshow(canvas, warpedMat); // 每次刷新前重製畫布為乾淨原圖
-    
-    let gray = new cv.Mat();
-    let thresh = new cv.Mat();
-    cv.cvtColor(warpedMat, gray, cv.COLOR_RGBA2GRAY);
-    cv.threshold(gray, thresh, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
+    // 每次刷新，先在可見畫布上重繪乾淨原圖
+    onscreenCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
+    onscreenCtx.drawImage(imgEl, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
     
     const options = ['A', 'B', 'C', 'D'];
     let paperAnswers = [];
-    const ctx = canvas.getContext('2d');
     
     for (let q = 1; q <= totalQs; q++) {
-        let colIdx = Math.floor((q - 1) / 25);
-        let rowIdx = (q - 1) % 25;
+        let colIdx = Math.floor((q - 1) / 25); // 第幾縱列
+        let rowIdx = (q - 1) % 25;            // 列中的第幾行
         
-        // 匯入微調偏移量
+        // 匯入微調偏移常數
         let colXStart = GRID.colStarts[colIdx] + caliX;
         let rowTopY = GRID_START_Y_BASE + (rowIdx * caliRowHeight) + caliY;
         let optY = rowTopY + (caliRowHeight - GRID.roiSize) / 2;
         
-        let maxPixels = 0;
+        let maxDarkPixels = 0;
         let detectedOptionIndex = -1;
         let optionPixelCounts = [];
         
         for (let o = 0; o < 4; o++) {
             let optX = colXStart + GRID.qNumberWidth + (o * caliOptGap) + (caliOptGap - GRID.roiSize) / 2;
+            
+            // 範圍安全限制作業，防止超出 800x1100 邊界
             let safeX = Math.max(0, Math.min(optX, TARGET_WIDTH - GRID.roiSize));
             let safeY = Math.max(0, Math.min(optY, TARGET_HEIGHT - GRID.roiSize));
             
-            let roiRect = new cv.Rect(safeX, safeY, GRID.roiSize, GRID.roiSize);
-            let roi = thresh.roi(roiRect);
-            let pixelCount = cv.countNonZero(roi);
+            // 💡 關鍵突破：從「離線畫布」擷取純淨像素資料，絕不受到外面彩色偵測框的干擾！
+            let imgData = offscreenCtx.getImageData(safeX, safeY, GRID.roiSize, GRID.roiSize);
+            let pixels = imgData.data;
+            let darkPixelCount = 0;
             
-            optionPixelCounts.push({ index: o, pixels: pixelCount, x: safeX, y: safeY });
-            if (pixelCount > maxPixels) { maxPixels = pixelCount; detectedOptionIndex = o; }
-            roi.delete();
+            // 遍歷 18x18 感應區內的所有像素 (每 4 格代表一組 RGBA)
+            for (let i = 0; i < pixels.length; i += 4) {
+                let r = pixels[i];
+                let g = pixels[i+1];
+                let b = pixels[i+2];
+                
+                // 工業標準灰階亮度公式 (Luminance)
+                let grayscale = 0.299 * r + 0.587 * g + 0.114 * b;
+                
+                // 如果亮度低於 130，代表該點被鉛筆/原子筆塗黑了
+                if (grayscale < 130) {
+                    darkPixelCount++;
+                }
+            }
             
-            // 繪製微型感應方塊 (淡橙色)，回饋當前偵測範圍
-            ctx.strokeStyle = 'rgba(217, 119, 6, 0.25)'; 
-            ctx.lineWidth = 1;
-            ctx.strokeRect(safeX, safeY, GRID.roiSize, GRID.roiSize);
+            optionPixelCounts.push({ index: o, count: darkPixelCount, x: safeX, y: safeY });
+            
+            if (darkPixelCount > maxDarkPixels) {
+                maxDarkPixels = darkPixelCount;
+                detectedOptionIndex = o;
+            }
+            
+            // 在畫面上永續繪製淡橙色半透明感應瞄準框
+            onscreenCtx.strokeStyle = 'rgba(217, 119, 6, 0.25)'; 
+            onscreenCtx.lineWidth = 1;
+            onscreenCtx.strokeRect(safeX, safeY, GRID.roiSize, GRID.roiSize);
         }
         
-        // 判定為劃記的深度閥值
-        if (maxPixels > caliThreshold) {
+        // 閥值過濾：如果最黑的那格，塗黑點數大於滑桿設定值，才判定為有劃記
+        if (maxDarkPixels > caliThreshold) {
             paperAnswers.push(options[detectedOptionIndex]);
+            
+            // 將判定的答案用粗外框高亮圈起來
             let bestOpt = optionPixelCounts[detectedOptionIndex];
-            ctx.strokeStyle = isBaseConfig ? '#10b981' : '#4f46e5'; // 答案卡綠色，學生卡深藍
-            ctx.lineWidth = 2.5;
-            ctx.strokeRect(bestOpt.x - 1, bestOpt.y - 1, GRID.roiSize + 2, GRID.roiSize + 2);
+            onscreenCtx.strokeStyle = isBaseConfig ? '#10b981' : '#4f46e5'; // 標準答案綠，學生卡藍
+            onscreenCtx.lineWidth = 2.5;
+            onscreenCtx.strokeRect(bestOpt.x - 1, bestOpt.y - 1, GRID.roiSize + 2, GRID.roiSize + 2);
         } else {
-            paperAnswers.push(null); // 空白
+            paperAnswers.push(null); // 空白題
         }
     }
     
-    gray.delete(); thresh.delete();
     return paperAnswers;
 }
 
 /**
- * 結算成績與渲染錯題卡
+ * 結算學生成績與渲染報告清單
  */
 function gradeStudentCard(studentAnswers, totalQs) {
     const scorePerQ = parseFloat(document.getElementById('input-score-per-question').value) || 5;
@@ -277,7 +242,7 @@ function gradeStudentCard(studentAnswers, totalQs) {
         } else {
             wrongCount++;
             const li = document.createElement('li');
-            li.innerHTML = `<span>第 <strong>${i+1}</strong> 題</span> <span>應為 [${correctAns || '未設'}] ➔ 讀到 [${studentAns}]</span>`;
+            li.innerHTML = `<span>第 <strong>${i+1}</strong> 題</span> <span>正確 [${correctAns || '未設'}] ➔ 讀到 [${studentAns}]</span>`;
             wrongList.appendChild(li);
         }
     }
@@ -290,10 +255,10 @@ function gradeStudentCard(studentAnswers, totalQs) {
     resultPanel.classList.remove('hidden');
 }
 
-// 換下一張學生卡 (清除左側，維持右側校準數據)
+// 換下一張學生卡
 btnNextStudent.addEventListener('click', () => {
     uploadStudent.value = '';
-    if (cachedStudentWarped) { cachedStudentWarped.delete(); cachedStudentWarped = null; }
+    cachedStudentImg = null;
     
     const canvas = document.getElementById('canvas-student');
     canvas.classList.add('hidden');
@@ -301,9 +266,9 @@ btnNextStudent.addEventListener('click', () => {
     resultPanel.classList.add('hidden');
 });
 
-// 完全重設 (釋放記憶體並重整網頁)
+// 完全重設
 btnFullReset.addEventListener('click', () => {
-    if (cachedAnswerWarped) cachedAnswerWarped.delete();
-    if (cachedStudentWarped) cachedStudentWarped.delete();
+    cachedAnswerImg = null;
+    cachedStudentImg = null;
     location.reload(); 
 });
