@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="app.js" defer></script>
 </head>
 <body>
     <div class="app-wrapper">
@@ -16,7 +17,7 @@
                 <span class="logo-icon">🚀</span>
                 <div>
                     <h1>自動答案卡批改系統</h1>
-                    <p class="subtitle">矩陣網格共振自動對齊引擎 (上傳免調校・支援手動拖移・完美部署 GitHub Pages)</p>
+                    <p class="subtitle">自適應智慧對齊引擎 (免調校・支援手動拖移・完美部署 GitHub Pages)</p>
                 </div>
             </div>
             <button id="btn-full-reset" class="btn btn-danger">✕ 完全重設系統</button>
@@ -89,10 +90,38 @@
                         </div>
 
                         <div class="calibration-box">
-                            <div class="tip-banner">💡 <b>矩陣共振系統已啟動：</b>上傳考卷後，系統會自動無視背景雜訊並鎖定氣泡網格。如果因為紙張極度皺褶產生些微偏差，您可以<b>直接用滑鼠或手指在圖片上拖移四個角落的彩色圓點</b>進行微調！</div>
+                            <div class="tip-banner">💡 <b>智慧提示：</b>系統已啟動全自動網格對齊。若因拍照過度歪斜而未對準，您可以<b>直接在上方考卷圖片上拖移四個角落的彩色圓點</b>進行完美對齊！</div>
+                            
+                            <div class="slider-grid-2col">
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格左起點 (X)</span><span class="slider-val" id="val-left">35</span></div>
+                                    <input type="range" id="cali-left" min="0" max="300" value="35">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格總寬 (W)</span><span class="slider-val" id="val-width">612</span></div>
+                                    <input type="range" id="cali-width" min="400" max="800" value="612">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格頂起點 (Y)</span><span class="slider-val" id="val-top">145</span></div>
+                                    <input type="range" id="cali-top" min="50" max="400" value="145">
+                                </div>
+                                <div class="slider-group">
+                                    <div class="slider-header"><span>網格總高 (H)</span><span class="slider-val" id="val-height">910</span></div>
+                                    <input type="range" id="cali-height" min="500" max="1000" value="910">
+                                </div>
+                            </div>
+
                             <div class="slider-group" style="margin-top: 10px;">
                                 <div class="slider-header">
-                                    <span>劃記填黑感應靈敏度 (感應黑點數門檻)</span>
+                                    <span>選項間距 (ABCD 水平跨距)</span>
+                                    <span class="slider-val"><span id="val-opt-gap">35.5</span>px</span>
+                                </div>
+                                <input type="range" id="cali-opt-gap" min="20" max="60" step="0.1" value="35.5">
+                            </div>
+
+                            <div class="slider-group" style="margin-top: 10px;">
+                                <div class="slider-header">
+                                    <span>劃記填黑感應靈敏度 (黑點數門檻)</span>
                                     <span class="slider-val"><span id="val-threshold">45</span>點</span>
                                 </div>
                                 <input type="range" id="cali-threshold" min="5" max="150" value="45">
@@ -103,6 +132,5 @@
             </section>
         </main>
     </div>
-    <script src="app.js"></script>
 </body>
 </html>
