@@ -13,6 +13,7 @@
         var Module = {
             onRuntimeInitialized: function() {
                 console.log("OpenCV WebAssembly 核心編譯成功！");
+                window.openCvReady = true; 
                 if (typeof window.initMyOMRSystem === 'function') {
                     window.initMyOMRSystem();
                 }
