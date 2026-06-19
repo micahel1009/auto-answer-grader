@@ -12,7 +12,7 @@ const GRID = {
     roiSize: 18                    // 觀測感應方塊大小 (18x18 像素)
 };
 
-// 🛠️ 動態校準控制變數
+// 動態校準控制變數
 let caliX = 0;
 let caliY = 0;
 let caliOptGap = 38;
@@ -21,7 +21,7 @@ let caliThreshold = 80;
 
 const GRID_START_Y_BASE = 195; // 縱列第1題垂直高度理論起點
 
-// 🗄️ 影像高速快取矩陣 (防拉動滑桿時重複編譯，節省大量運算，防止記憶體外洩)
+// 影像高速快取矩陣 (防拉動滑桿時重複編譯，節省大量運算，防止記憶體外洩)
 let cachedAnswerWarped = null;
 let cachedStudentWarped = null;
 
@@ -34,13 +34,18 @@ const resultPanel = document.getElementById('result-panel');
 const ansStatus = document.getElementById('ans-status');
 const loadingOverlay = document.getElementById('opencv-loading-overlay');
 
-// 🔥 核心修復：由全域對接 window.Module 的執行緒就緒訊號
+// 核心修復：由全域對接 window.Module 的執行緒就緒訊號
 window.initMyOMRSystem = function() {
     console.log("OpenCV.js 智慧校準核心全面解鎖！");
     if (loadingOverlay) {
-        loadingOverlay.style.display = 'none'; // 2026年生產版核心解鎖，隱藏轉圈圈
+        loadingOverlay.style.display = 'none'; 
     }
 };
+
+// 🔥 雙重保險核心修復：阻斷 GitHub Pages 因為異步加載造成的 Race Condition 競態鎖死 bug
+if (window.openCvReady || (typeof cv !== 'undefined' && cv.Mat)) {
+    window.initMyOMRSystem();
+}
 
 // 綁定所有校準滑桿
 const sliders = ['cali-x', 'cali-y', 'cali-opt-gap', 'cali-row-height', 'cali-threshold'];
@@ -230,7 +235,7 @@ function scanPaperAnswers(warpedMat, totalQs, canvas, isBaseConfig = false) {
             if (pixelCount > maxPixels) { maxPixels = pixelCount; detectedOptionIndex = o; }
             roi.delete();
             
-            // 繪製微型感應琥珀色方塊，回饋當前偵測範圍
+            // 繪製微型感應方塊 (淡橙色)，回饋當前偵測範圍
             ctx.strokeStyle = 'rgba(217, 119, 6, 0.25)'; 
             ctx.lineWidth = 1;
             ctx.strokeRect(safeX, safeY, GRID.roiSize, GRID.roiSize);
