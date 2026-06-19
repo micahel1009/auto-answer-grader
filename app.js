@@ -5,45 +5,33 @@ let isBaseAnswerReady = false;
 const TARGET_WIDTH = 800;
 const TARGET_HEIGHT = 1100;
 
-// 瀚浩教育答案卡網格物理佔比常數 (核心比例矩陣)
+// 🎯 瀚浩教育答案卡內部的黃金歸一化比例矩陣 (相對於大黑框的精準百分比)
 const CARD_PROPORTIONS = {
-    vStart: 0.146,       // 第一排題目相對於大外框的 Y 比例
-    vEnd: 0.965,         // 最後一排題目相對於大外框的 Y 比例
-    uColStarts: [0.024, 0.270, 0.516, 0.762], // 四個直列區塊的 X 起點比例
-    uNumWidth: 0.038,    // 題號區塊所佔寬度比例
-    uOptGap: 0.044,      // OptionA -> B -> C -> D 的水平間距比例
-    roiSize: 18          // 感應像素方塊大小 (18x18)
+    vStart: 0.02,       // 第一排題目相對於大外框頂端的 V 比例
+    vStep: 0.04,        // 每排題目之間的垂直 V 跨距比例 (1 / 25)
+    uColStarts: [0.0, 0.25, 0.50, 0.75], // 四個縱列區塊的 U 起點比例
+    uOptStart: 0.055,   // 題號過後的 Option A 的水平起始偏移比例
+    uOptStep: 0.050,    // A -> B -> C -> D 的水平跨距比例
+    roiSize: 18          // 感應像素方塊大小 (18x18 像素)
 };
 
-// 4 角定位點坐標儲存器 (解答卡與學生卡各自獨立)
+// 4 角定位點坐標儲存器 (雙畫布獨立運作)
 let answerCorners = { tl: {x:35, y:145}, tr: {x:765, y:145}, bl: {x:35, y:1055}, br: {x:765, y:1055} };
 let studentCorners = { tl: {x:35, y:145}, tr: {x:765, y:145}, bl: {x:35, y:1055}, br: {x:765, y:1055} };
 
 let caliThreshold = 45;
+let dragTarget = null; // 追蹤鼠標/手指正在抓哪一個把手
 
 // 離線畫布
 let offscreenAnswerCanvas = document.createElement('canvas');
 let offscreenStudentCanvas = document.createElement('canvas');
-offscreenAnswerCanvas.width = TARGET_WIDTH;
-offscreenAnswerCanvas.height = TARGET_HEIGHT;
-offscreenStudentCanvas.width = TARGET_WIDTH;
-offscreenStudentCanvas.height = TARGET_HEIGHT;
+offscreenAnswerCanvas.width = TARGET_WIDTH; offscreenAnswerCanvas.height = TARGET_HEIGHT;
+offscreenStudentCanvas.width = TARGET_WIDTH; offscreenStudentCanvas.height = TARGET_HEIGHT;
 
 let cachedAnswerImg = null;
 let cachedStudentImg = null;
 
-// 拖曳狀態追蹤鎖
-let dragTarget = null; // { canvasId: 'canvas-answer'/'canvas-student', key: 'tl'/'tr'/'bl'/'br' }
-
-// DOM 元素選取
-const uploadAnswer = document.getElementById('upload-answer');
-const uploadStudent = document.getElementById('upload-student');
-const btnNextStudent = document.getElementById('btn-next-student');
-const btnFullReset = document.getElementById('btn-full-reset');
-const resultPanel = document.getElementById('result-panel');
-const ansStatus = document.getElementById('ans-status');
-
-// 綁定靈敏度滑桿
+// 監聽靈敏度
 document.getElementById('cali-threshold').addEventListener('input', (e) => {
     caliThreshold = parseInt(e.target.value);
     document.getElementById('val-threshold').innerText = caliThreshold;
@@ -51,87 +39,92 @@ document.getElementById('cali-threshold').addEventListener('input', (e) => {
 });
 document.getElementById('input-total-questions').addEventListener('input', rerenderAndAnalyzeAll);
 
-// 初始化畫布事件監聽（解鎖滑訊與觸控拖曳）
+// 初始化雙畫布的手指/滑鼠解鎖機制
 setupCanvasDragEvents('canvas-answer', answerCorners);
 setupCanvasDragEvents('canvas-student', studentCorners);
 
 /**
- * 🛠️ 核心演算法：自適應直方圖內縮黑框獵取器 (自動抓取印刷黑色大外框)
+ * 🛠️ 核心突破：工業級「結構化網格共振擬合演算法」
+ * 透過尋找 5 條等距垂直線與 26 條等距水平線的最大化矩陣投影，徹底秒殺背景干擾！
  */
-function autoDetectFrame(offCtx) {
+function autoFitGridMatrix(offCtx) {
     const imgData = offCtx.getImageData(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
     const pixels = imgData.data;
     
-    // 1. 動態紙張亮度採樣，計算完美的二值化臨界值
+    // 1. 動態環境採樣臨界值計算
     let graySum = 0, count = 0;
-    for (let y = 400; y < 800; y += 30) {
-        for (let x = 200; x < 600; x += 30) {
+    for (let y = 300; y < 800; y += 20) {
+        for (let x = 200; x < 600; x += 20) {
             let idx = (y * TARGET_WIDTH + x) * 4;
             graySum += (pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3;
             count++;
         }
     }
-    let threshold = (graySum / count) * 0.74; // 低於此亮度即視為黑色線條
+    let threshold = (graySum / count) * 0.75; // 低於此亮度即為印刷黑線墨水
     
-    // 2. 四向內縮式切線探針（避開外部動漫桌墊等雜訊干擾）
-    let L = 35, R = 765, T = 145, B = 1055;
+    // 2. 建立全圖高精度黑線投影直方圖
+    let vProj = new Array(TARGET_WIDTH).fill(0);
+    let hProj = new Array(TARGET_HEIGHT).fill(0);
+    for (let y = 140; y < 1060; y++) {
+        for (let x = 20; x < 780; x++) {
+            let idx = (y * TARGET_WIDTH + x) * 4;
+            if ((pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3 < threshold) {
+                vProj[x]++;
+                hProj[y]++;
+            }
+        }
+    }
     
-    // 掃描左邊界 (從 X=25 內縮至 X=150)
-    let hitsL = [];
-    for (let y of [350, 550, 750]) {
-        for (let x = 25; x < 150; x++) {
-            let idx = (y * TARGET_WIDTH + x) * 4;
-            if ((pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3 < threshold) { hitsL.push(x); break; }
+    // 3. 垂直網格共振搜尋 (尋找最佳 X 軸起點與大外框寬度)
+    let bestX0 = 35, bestW = 612, maxXScore = -1;
+    for (let x0 = 25; x0 <= 75; x0 += 2) {
+        for (let w = 590; w <= 650; w += 2) {
+            let score = 0;
+            let step = w / 4;
+            for (let k = 0; k <= 4; k++) {
+                let xVal = Math.round(x0 + k * step);
+                if (xVal < TARGET_WIDTH) {
+                    // 加上緩衝區融合，防止鏡頭微幅球形畸變
+                    score += vProj[xVal] + (vProj[xVal-1]||0) + (vProj[xVal+1]||0);
+                }
+            }
+            if (score > maxXScore) { maxXScore = score; bestX0 = x0; bestW = w; }
         }
     }
-    if (hitsL.length > 0) L = hitsL.sort((a,b)=>a-b)[Math.floor(hitsL.length/2)];
-
-    // 掃描右邊界 (從 X=775 外縮至 X=650)
-    let hitsR = [];
-    for (let y of [350, 550, 750]) {
-        for (let x = 775; x > 650; x--) {
-            let idx = (y * TARGET_WIDTH + x) * 4;
-            if ((pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3 < threshold) { hitsR.push(x); break; }
+    
+    // 4. 水平網格共振搜尋 (尋找最佳 Y 軸起點與大外框高度)
+    let bestY0 = 195, bestH = 835, maxYScore = -1;
+    for (let y0 = 150; y0 <= 230; y0 += 2) {
+        for (let h = 800; h <= 860; h += 2) {
+            let score = 0;
+            let step = h / 24; // 25排題目有24個間隔
+            for (let r = 0; r <= 24; r++) {
+                let yVal = Math.round(y0 + r * step);
+                if (yVal < TARGET_HEIGHT) {
+                    score += hProj[yVal] + (hProj[yVal-1]||0) + (hProj[yVal+1]||0);
+                }
+            }
+            if (score > maxYScore) { maxYScore = score; bestY0 = y0; bestH = h; }
         }
     }
-    if (hitsR.length > 0) R = hitsR.sort((a,b)=>a-b)[Math.floor(hitsR.length/2)];
-
-    // 掃描頂邊界
-    let hitsT = [];
-    for (let x of [300, 400, 500]) {
-        for (let y = 100; y < 250; y++) {
-            let idx = (y * TARGET_WIDTH + x) * 4;
-            if ((pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3 < threshold) { hitsT.push(y); break; }
-        }
-    }
-    if (hitsT.length > 0) T = hitsT.sort((a,b)=>a-b)[Math.floor(hitsT.length/2)];
-
-    // 掃描底邊界
-    let hitsB = [];
-    for (let x of [300, 400, 500]) {
-        for (let y = 1080; y > 900; y--) {
-            let idx = (y * TARGET_WIDTH + x) * 4;
-            if ((pixels[idx] + pixels[idx+1] + pixels[idx+2]) / 3 < threshold) { hitsB.push(y); break; }
-        }
-    }
-    if (hitsB.length > 0) B = hitsB.sort((a,b)=>a-b)[Math.floor(hitsB.length/2)];
-
-    // 門檻防錯限幅保護
-    if (R - L < 400 || B - T < 600) { L = 35; R = 765; T = 145; B = 1055; }
-
+    
+    // 修正高度與頂部偏移至印刷外黑框的實際物理頂端 (頂端框線距離第一題約為 50 像素)
+    let outerTop = bestY0 - 50;
+    let outerHeight = bestH + 70;
+    
     return {
-        tl: { x: L, y: T },
-        tr: { x: R, y: T },
-        bl: { x: L, y: B },
-        br: { x: R, y: B }
+        tl: { x: bestX0, y: outerTop },
+        tr: { x: bestX0 + bestW, y: outerTop },
+        bl: { x: bestX0, y: outerTop + outerHeight },
+        br: { x: bestX0 + bestW, y: outerTop + outerHeight }
     };
 }
 
 /**
- * ⚡ 核心數學：雙線性插值（Bilinear Interpolation）坐標映射器
- * 完美解決旋轉、縮放、上大下小等所有複雜變形！
+ * ⚡ 雙線性扭曲投影（Bilinear Interpolation Transform）
+ * 將 4 個任意拖曳的頂點，完美解算映射回固定網格比例！
  */
-function getInterpolatedPoint(u, v, corners) {
+function getBilinearPoint(u, v, corners) {
     let x = (1 - u) * (1 - v) * corners.tl.x + u * (1 - v) * corners.tr.x + (1 - u) * v * corners.bl.x + u * v * corners.br.x;
     let y = (1 - u) * (1 - v) * corners.tl.y + u * (1 - v) * corners.tr.y + (1 - u) * v * corners.bl.y + u * v * corners.br.y;
     return { x: x, y: y };
@@ -141,22 +134,22 @@ function rerenderAndAnalyzeAll() {
     const totalQs = parseInt(document.getElementById('input-total-questions').value) || 20;
     
     if (cachedAnswerImg) {
-        baseAnswerKey = processGridMapping(cachedAnswerImg, offscreenAnswerCanvas, 'canvas-answer', totalQs, answerCorners, true);
+        baseAnswerKey = executeRenderAndOMR(cachedAnswerImg, offscreenAnswerCanvas, 'canvas-answer', totalQs, answerCorners, true);
         isBaseAnswerReady = true;
         ansStatus.innerText = `✅ 已就緒 (${baseAnswerKey.filter(x => x !== null).length} 題)`;
         ansStatus.className = "badge badge-success";
     }
     
     if (cachedStudentImg && isBaseAnswerReady) {
-        const studentAnswers = processGridMapping(cachedStudentImg, offscreenStudentCanvas, 'canvas-student', totalQs, studentCorners, false);
+        const studentAnswers = executeRenderAndOMR(cachedStudentImg, offscreenStudentCanvas, 'canvas-student', totalQs, studentCorners, false);
         gradeStudentCard(studentAnswers, totalQs);
     }
 }
 
 /**
- * 🔍 核心幾何渲染與動態像素判定分析器
+ * 🔍 核心掃描與圖像高亮映射渲染器
  */
-function processGridMapping(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, corners, isBaseConfig = false) {
+function executeRenderAndOMR(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, corners, isBaseConfig = false) {
     const canvas = document.getElementById(onscreenCanvasId);
     const onscreenCtx = canvas.getContext('2d');
     const offscreenCtx = offscreenCanvas.getContext('2d');
@@ -164,7 +157,6 @@ function processGridMapping(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, c
     onscreenCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
     onscreenCtx.drawImage(imgEl, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
     
-    // 計算區域自適應環境臨界值
     const sample = offscreenCtx.getImageData(TARGET_WIDTH/4, TARGET_HEIGHT/4, TARGET_WIDTH/2, TARGET_HEIGHT/2).data;
     let sSum = 0; for(let i=0; i<sample.length; i+=16) sSum += (sample[i]+sample[i+1]+sample[i+2])/3;
     let dynamicThresh = (sSum / (sample.length / 16)) * 0.74;
@@ -172,13 +164,12 @@ function processGridMapping(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, c
     const options = ['A', 'B', 'C', 'D'];
     let paperAnswers = [];
     
-    // 生成彈簧網格並進行像素分析
     for (let q = 1; q <= totalQs; q++) {
         let colIdx = Math.floor((q - 1) / 25);
         let rowIdx = (q - 1) % 25;
         
-        // 算出該題排行的自適應 V 比例
-        let v = CARD_PROPORTIONS.vStart + rowIdx * ((CARD_PROPORTIONS.vEnd - CARD_PROPORTIONS.vStart) / 24);
+        // 映射出當前題目排行的歸一化 V 百分比
+        let v = CARD_PROPORTIONS.vStart + (rowIdx * CARD_PROPORTIONS.vStep);
         let colUStart = CARD_PROPORTIONS.uColStarts[colIdx];
         
         let maxDarkPixels = 0;
@@ -186,11 +177,11 @@ function processGridMapping(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, c
         let optionPixelCounts = [];
         
         for (let o = 0; o < 4; o++) {
-            // 精算每個 ABCD 選項的歸一化 U 比例
-            let u = colUStart + CARD_PROPORTIONS.uNumWidth + (o * CARD_PROPORTIONS.uOptGap);
+            // 映射出每個氣泡圈的歸一化 U 百分比
+            let u = colUStart + CARD_PROPORTIONS.uOptStart + (o * CARD_PROPORTIONS.uOptStep);
             
-            // 透過雙線性公式反向解算影像畫布上的絕對像素坐標
-            let pt = getInterpolatedPoint(u, v, corners);
+            // 雙線性矩陣反向解算
+            let pt = getBilinearPoint(u, v, corners);
             
             let safeX = Math.max(0, Math.min(pt.x - CARD_PROPORTIONS.roiSize/2, TARGET_WIDTH - CARD_PROPORTIONS.roiSize));
             let safeY = Math.max(0, Math.min(pt.y - CARD_PROPORTIONS.roiSize/2, TARGET_HEIGHT - CARD_PROPORTIONS.roiSize));
@@ -206,8 +197,8 @@ function processGridMapping(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, c
             optionPixelCounts.push({ index: o, count: darkCount, x: safeX, y: safeY });
             if (darkCount > maxDarkPixels) { maxDarkPixels = darkCount; detectedOptionIndex = o; }
             
-            // 繪製高精密微型感應圈 (淡橙色)
-            onscreenCtx.strokeStyle = 'rgba(245, 158, 11, 0.28)'; 
+            // 繪製微型感應框 (琥珀色)
+            onscreenCtx.strokeStyle = 'rgba(245, 158, 11, 0.25)'; 
             onscreenCtx.lineWidth = 1;
             onscreenCtx.strokeRect(safeX, safeY, CARD_PROPORTIONS.roiSize, CARD_PROPORTIONS.roiSize);
         }
@@ -223,14 +214,14 @@ function processGridMapping(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, c
         }
     }
     
-    // 💡 渲染 4 個角落圓形拖曳把手（標準卡綠色，學生卡藍色）
+    // 💡 繪製 4 個角落圓形彩色觸控把手
     const handleColor = isBaseConfig ? '#10b981' : '#4f46e5';
     for (let key in corners) {
         onscreenCtx.fillStyle = handleColor;
         onscreenCtx.strokeStyle = '#ffffff';
         onscreenCtx.lineWidth = 2;
         onscreenCtx.beginPath();
-        onscreenCtx.arc(corners[key].x, corners[key].y, 10, 0, 2 * Math.PI);
+        onscreenCtx.arc(corners[key].x, corners[key].y, 11, 0, 2 * Math.PI);
         onscreenCtx.fill();
         onscreenCtx.stroke();
     }
@@ -238,10 +229,9 @@ function processGridMapping(imgEl, offscreenCanvas, onscreenCanvasId, totalQs, c
     return paperAnswers;
 }
 
-// 處理正確答案卡上傳
+// 正確答案卡上傳
 uploadAnswer.addEventListener('change', (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+    const file = e.target.files[0]; if (!file) return;
     const img = new Image();
     img.onload = function() {
         cachedAnswerImg = img;
@@ -254,21 +244,17 @@ uploadAnswer.addEventListener('change', (e) => {
         offCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
         offCtx.drawImage(img, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
         
-        // 🚀 自動獵取黑邊框並更新坐標
-        answerCorners = autoDetectFrame(offCtx);
+        // 🚀 執行矩陣共振擬合自動偵測
+        answerCorners = autoFitGridMatrix(offCtx);
         rerenderAndAnalyzeAll();
     };
     img.src = URL.createObjectURL(file);
 });
 
-// 處理學生答案卡上傳
+// 學生卡上傳
 uploadStudent.addEventListener('change', (e) => {
-    if (!isBaseAnswerReady) {
-        alert('請先在右側設定「正確答案卡」基準！');
-        uploadStudent.value = ''; return;
-    }
-    const file = e.target.files[0];
-    if (!file) return;
+    if (!isBaseAnswerReady) { alert('請先在右側設定「正確答案卡」基準！'); uploadStudent.value = ''; return; }
+    const file = e.target.files[0]; if (!file) return;
     const img = new Image();
     img.onload = function() {
         cachedStudentImg = img;
@@ -281,22 +267,21 @@ uploadStudent.addEventListener('change', (e) => {
         offCtx.clearRect(0, 0, TARGET_WIDTH, TARGET_HEIGHT);
         offCtx.drawImage(img, 0, 0, TARGET_WIDTH, TARGET_HEIGHT);
         
-        // 🚀 自適應！獨立為這張學生卡獵取邊框坐標，完全解決遠近不同的干擾
-        studentCorners = autoDetectFrame(offCtx);
+        // 🚀 自適應！獨立為學生卡執行網格共振，管你背景多亂、拍遠拍近，自動精準定位！
+        studentCorners = autoFitGridMatrix(offCtx);
         rerenderAndAnalyzeAll();
     };
     img.src = URL.createObjectURL(file);
 });
 
 /**
- * 🖱️ 智慧互動手感模組：解鎖 Canvas Draggable Corners 拖曳控制
+ * 🖱️ 智慧互動手感監聽器：支援手機觸控拖曳與滑鼠控制
  */
 function setupCanvasDragEvents(canvasId, cornersObj) {
     const canvas = document.getElementById(canvasId);
     
     function getMousePos(e) {
         const rect = canvas.getBoundingClientRect();
-        // 考量到 CSS 響應式縮放，進行精準比例轉換
         let clientX = e.touches ? e.touches[0].clientX : e.clientX;
         let clientY = e.touches ? e.touches[0].clientY : e.clientY;
         return {
@@ -308,15 +293,12 @@ function setupCanvasDragEvents(canvasId, cornersObj) {
     function handleStart(e) {
         if ((canvasId === 'canvas-answer' && !cachedAnswerImg) || (canvasId === 'canvas-student' && !cachedStudentImg)) return;
         const pos = getMousePos(e);
-        
-        // 檢查點擊是否命中 4 個角落把手的 24px 感應範圍內
         for (let key in cornersObj) {
             let dx = pos.x - cornersObj[key].x;
             let dy = pos.y - cornersObj[key].y;
-            if (Math.sqrt(dx*dx + dy*dy) < 24) {
+            if (Math.sqrt(dx*dx + dy*dy) < 24) { // 24px 寬域感應
                 dragTarget = { canvasId: canvasId, key: key };
-                e.preventDefault();
-                break;
+                e.preventDefault(); break;
             }
         }
     }
@@ -324,13 +306,10 @@ function setupCanvasDragEvents(canvasId, cornersObj) {
     function handleMove(e) {
         if (!dragTarget || dragTarget.canvasId !== canvasId) return;
         const pos = getMousePos(e);
-        
-        // 限制座標不得滑出畫布邊界
         cornersObj[dragTarget.key].x = Math.max(0, Math.min(pos.x, TARGET_WIDTH));
         cornersObj[dragTarget.key].y = Math.max(0, Math.min(pos.y, TARGET_HEIGHT));
-        
         e.preventDefault();
-        rerenderAndAnalyzeAll(); // 即時動態重新編譯插值網格並結算成績
+        rerenderAndAnalyzeAll(); // 毫秒級重新映射插值並即時結算成績
     }
     
     function handleEnd() { dragTarget = null; }
@@ -338,7 +317,6 @@ function setupCanvasDragEvents(canvasId, cornersObj) {
     canvas.addEventListener('mousedown', handleStart);
     canvas.addEventListener('mousemove', handleMove);
     window.addEventListener('mouseup', handleEnd);
-    
     canvas.addEventListener('touchstart', handleStart, { passive: false });
     canvas.addEventListener('touchmove', handleMove, { passive: false });
     window.addEventListener('touchend', handleEnd);
@@ -353,20 +331,18 @@ function gradeStudentCard(studentAnswers, totalQs) {
     for (let i = 0; i < totalQs; i++) {
         const studentAns = studentAnswers[i] || '未劃記'; 
         const correctAns = baseAnswerKey[i];
-        
         if (studentAns === correctAns) {
             correctCount++;
         } else {
             wrongCount++;
             const li = document.createElement('li');
-            li.innerHTML = `<span>第 <strong>${i+1}</strong> 題</span> <span>正確 [${correctAns || '未設'}] ➔ 讀到 [${studentAns}]</span>`;
+            li.innerHTML = `<span>第 <strong>${i+1}</strong> 題</span> <span>正確 [${correctAns || '空'}] ➔ 讀到 [${studentAns}]</span>`;
             wrongList.appendChild(li);
         }
     }
 
     let finalScore = correctCount * scorePerQ;
     if (finalScore > 100) finalScore = 100;
-
     document.getElementById('score-text').innerText = finalScore;
     document.getElementById('wrong-count').innerText = `${wrongCount} 題`;
     resultPanel.classList.remove('hidden');
@@ -381,6 +357,5 @@ btnNextStudent.addEventListener('click', () => {
 });
 
 btnFullReset.addEventListener('click', () => {
-    cachedAnswerImg = null; cachedStudentImg = null;
-    location.reload(); 
+    cachedAnswerImg = null; cachedStudentImg = null; location.reload(); 
 });
