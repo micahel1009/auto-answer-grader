@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI-OMR | 純前端 Canvas 原生自動答案卡批改系統</title>
+    <title>AI-OMR | 純前端 Canvas 智慧自動答案卡批改系統</title>
     <link rel="stylesheet" href="style.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,7 +16,7 @@
                 <span class="logo-icon">📝</span>
                 <div>
                     <h1>自動答案卡批改系統</h1>
-                    <p class="subtitle">100% 純 HTML5 Canvas 原生像素偵測引擎 (秒速加載・完美部署 GitHub Pages)</p>
+                    <p class="subtitle">純前端 Canvas 高速像素偵測引擎 (完美相容 GitHub Pages・0延遲免排隊)</p>
                 </div>
             </div>
             <button id="btn-full-reset" class="btn btn-danger">✕ 完全重設系統</button>
@@ -89,46 +89,62 @@
                         </div>
 
                         <div class="calibration-box">
-                            <h3>🛠️ 原生畫筆網格即時校準工具</h3>
+                            <h3>🛠️ 智慧等比例網格校準工具 (看著上圖調至完美對齊)</h3>
                             
                             <div class="slider-group">
                                 <div class="slider-header">
-                                    <span>左右微調 (X 軸平移)</span>
-                                    <span class="slider-val"><span id="val-x">0</span>px</span>
+                                    <span>網格左邊界起點 (X)</span>
+                                    <span class="slider-val"><span id="val-left">50</span>px</span>
                                 </div>
-                                <input type="range" id="cali-x" min="-150" max="150" value="0">
+                                <input type="range" id="cali-left" min="0" max="400" value="50">
                             </div>
 
                             <div class="slider-group">
                                 <div class="slider-header">
-                                    <span>上下微調 (Y 軸平移)</span>
-                                    <span class="slider-val"><span id="val-y">0</span>px</span>
+                                    <span>網格總包絡寬度 (W) - 調整集體大欄距</span>
+                                    <span class="slider-val"><span id="val-width">600</span>px</span>
                                 </div>
-                                <input type="range" id="cali-y" min="-150" max="150" value="0">
+                                <input type="range" id="cali-width" min="300" max="800" value="600">
                             </div>
 
                             <div class="slider-group">
                                 <div class="slider-header">
-                                    <span>選項間距 (ABCD 水平間距)</span>
-                                    <span class="slider-val"><span id="val-opt-gap">38</span>px</span>
+                                    <span>網格頂邊界起點 (Y)</span>
+                                    <span class="slider-val"><span id="val-top">190</span>px</span>
                                 </div>
-                                <input type="range" id="cali-opt-gap" min="30" max="50" step="0.1" value="38">
+                                <input type="range" id="cali-top" min="0" max="500" value="190">
                             </div>
 
                             <div class="slider-group">
                                 <div class="slider-header">
-                                    <span>行高高度 (題目垂直間距)</span>
-                                    <span class="slider-val"><span id="val-row-height">34.6</span>px</span>
+                                    <span>網格總包絡高度 (H) - 調整集體排高</span>
+                                    <span class="slider-val"><span id="val-height">830</span>px</span>
                                 </div>
-                                <input type="range" id="cali-row-height" min="25" max="45" step="0.05" value="34.6">
+                                <input type="range" id="cali-height" min="400" max="1000" value="830">
                             </div>
 
                             <div class="slider-group">
                                 <div class="slider-header">
-                                    <span>劃記判定黑點量門檻 (氣泡感應靈敏度)</span>
-                                    <span class="slider-val"><span id="val-threshold">60</span>點</span>
+                                    <span>斜角歪斜修正 (Skew) - 專治拍照拿歪</span>
+                                    <span class="slider-val"><span id="val-skew">0</span>px</span>
                                 </div>
-                                <input type="range" id="cali-threshold" min="10" max="250" value="60">
+                                <input type="range" id="cali-skew" min="-50" max="50" value="0">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <span>選項間距 (ABCD 內跨距)</span>
+                                    <span class="slider-val"><span id="val-opt-gap">36</span>px</span>
+                                </div>
+                                <input type="range" id="cali-opt-gap" min="20" max="60" step="0.5" value="36">
+                            </div>
+
+                            <div class="slider-group">
+                                <div class="slider-header">
+                                    <span>劃記黑點感應靈敏度 (感應黑點數門檻)</span>
+                                    <span class="slider-val"><span id="val-threshold">50</span>點</span>
+                                </div>
+                                <input type="range" id="cali-threshold" min="5" max="200" value="50">
                             </div>
                         </div>
                     </div>
